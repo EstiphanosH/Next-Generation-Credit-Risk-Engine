@@ -1,0 +1,14 @@
+apiVersion: machinelearning.seldon.io/v1
+kind: SeldonDeployment
+metadata:
+  name: credit-model
+spec:
+  predictors:
+  - componentSpecs:
+      - spec:
+          containers:
+          - name: model
+            image: ghcr.io/yourrepo/credit-model:latest
+    graph:
+      name: model
+      type: MODEL

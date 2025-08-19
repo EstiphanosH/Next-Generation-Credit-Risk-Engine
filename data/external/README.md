@@ -1,0 +1,1 @@
+Macroeconomic data from FRED API (see scripts/fred_fetch.py)

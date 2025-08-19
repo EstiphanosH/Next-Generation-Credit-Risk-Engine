@@ -1,0 +1,5 @@
+{
+    "model_type": "GNN+LightGBM",
+    "train_date": "",
+    "metrics": {"auc": 0.0, "gini": 0.0}
+}
