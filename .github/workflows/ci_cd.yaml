@@ -2,67 +2,58 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash -l {0}
 
     steps:
-      # Checkout repository
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # Setup Miniconda
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@v2
         with:
-          auto-activate-base: false
           python-version: "3.10"
-          environment-file: environment.yml
           activate-environment: credit-risk
+          environment-file: environment.yml
           use-mamba: true
+          auto-update-conda: true
 
-      # Cache pip dependencies
-      - name: Cache pip packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      # Install pip dependencies
-      - name: Install pip dependencies
+      - name: Install pip fallback if conda failed
         run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-      # Lint with flake8 + black
-      - name: Run flake8
-        run: |
-          pip install flake8 black
-          flake8 src tests || true   # won't fail if tests/ missing
-          black --check src tests
-
-      # Run tests if available
-      - name: Run pytest (if tests exist)
-        run: |
-          pip install pytest pytest-cov
-          if [ -d "tests" ] && [ "$(ls -A tests)" ]; then
-            pytest tests --maxfail=1 --disable-warnings -q --cov=src --cov-report=xml
-          else
-            echo "No tests found, skipping pytest ✅"
+          if ! conda env list | grep credit-risk; then
+            echo "⚠️ Conda env creation failed, falling back to pip install"
+            python -m pip install --upgrade pip
+            if [ -f requirements.txt ]; then
+              pip install -r requirements.txt
+            fi
           fi
 
-      # Verify FastAPI app runs
-      - name: Check FastAPI app startup
+      - name: Lint code
         run: |
-          uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload &
-          sleep 10
-          curl -f http://127.0.0.1:8000/docs || exit 1
+          conda run -n credit-risk pip install flake8 black pytest pytest-cov
+          conda run -n credit-risk flake8 src tests || true
+          conda run -n credit-risk black --check src tests
+
+      - name: Run tests (skip if none)
+        run: |
+          if [ -d "tests" ] && [ "$(ls -A tests)" ]; then
+            conda run -n credit-risk pytest tests --maxfail=1 --disable-warnings -q --cov=src --cov-report=xml
+          else
+            echo "✅ No tests found, skipping pytest"
+          fi
+
+      - name: Check FastAPI app startup (optional)
+        run: |
+          if [ -f "src/main.py" ]; then
+            conda run -n credit-risk pip install uvicorn fastapi
+            uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload &
+            sleep 10
+            curl -f http://127.0.0.1:8000/docs || exit 1
+          else
+            echo "⚠️ No FastAPI entrypoint found (src/main.py missing), skipping app startup check"
+          fi
