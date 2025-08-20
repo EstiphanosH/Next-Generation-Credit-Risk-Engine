@@ -1,0 +1,15 @@
+artifact_uri: file:///D:/EsH/KAIM/week12/Next-Generation-Credit-Risk-Engine/mlruns/701771646456332547/9480492c8670420393f0dfd327a154e9/artifacts
+end_time: 1755672733486
+entry_point_name: ''
+experiment_id: '701771646456332547'
+lifecycle_stage: active
+run_id: 9480492c8670420393f0dfd327a154e9
+run_name: logistic_regression
+run_uuid: 9480492c8670420393f0dfd327a154e9
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1755672714340
+status: 4
+tags: []
+user_id: Estiphanos.H

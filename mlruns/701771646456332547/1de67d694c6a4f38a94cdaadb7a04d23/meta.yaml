@@ -1,0 +1,15 @@
+artifact_uri: file:///D:/EsH/KAIM/week12/Next-Generation-Credit-Risk-Engine/mlruns/701771646456332547/1de67d694c6a4f38a94cdaadb7a04d23/artifacts
+end_time: 1755676516239
+entry_point_name: ''
+experiment_id: '701771646456332547'
+lifecycle_stage: active
+run_id: 1de67d694c6a4f38a94cdaadb7a04d23
+run_name: xgboost
+run_uuid: 1de67d694c6a4f38a94cdaadb7a04d23
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1755676510269
+status: 3
+tags: []
+user_id: Estiphanos.H

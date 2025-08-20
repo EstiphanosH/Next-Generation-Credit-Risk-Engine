@@ -1,127 +1,173 @@
-# scripts/train.py
-"""
-Train a LightGBM classifier, log artifacts to MLflow, produce SHAP explanations.
-This script is intentionally straightforward and suitable for local development.
-"""
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import os
 import argparse
+import joblib
 import logging
-from pathlib import Path
 import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
+import shap
+
+from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.compose import ColumnTransformer
-from sklearn.metrics import roc_auc_score, accuracy_score
-import joblib
-import mlflow
-import mlflow.sklearn
+from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from xgboost import XGBClassifier
 import lightgbm as lgb
+from sklearn.metrics import roc_auc_score
 
-logger = logging.getLogger("train")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# Logging config
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-
-def load_features(path: Path) -> pd.DataFrame:
-    if not path.exists():
-        raise FileNotFoundError(f"Processed features not found at {path}")
-    if path.suffix == ".parquet":
-        return pd.read_parquet(path)
+# -----------------------------
+# Load data
+# -----------------------------
+def load_data(path: str) -> pd.DataFrame:
+    logger.info(f"Loading processed data from {path}")
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".csv":
+        df = pd.read_csv(path)
+    elif ext == ".parquet":
+        df = pd.read_parquet(path)
     else:
-        return pd.read_csv(path)
+        raise ValueError("Unsupported file format. Use CSV or Parquet.")
+    logger.info(f"Loaded data shape: {df.shape}")
+    return df
 
+# -----------------------------
+# Preprocessing
+# -----------------------------
+def preprocess_features(df: pd.DataFrame, target_col: str):
+    # Drop rows with missing target
+    df = df.dropna(subset=[target_col])
+    logger.info(f"Dropped rows with missing target. Remaining rows: {df.shape[0]}")
 
-def build_pipeline(numeric_features, categorical_features):
-    numeric_transformer = Pipeline(steps=[("scaler", StandardScaler())])
-    categorical_transformer = Pipeline(steps=[("ohe", OneHotEncoder(handle_unknown="ignore", sparse=False))])
+    # Identify categorical and numeric columns
+    categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
+
+    if target_col in numeric_cols:
+        numeric_cols.remove(target_col)
+    if target_col in categorical_cols:
+        categorical_cols.remove(target_col)
+
+    logger.info(f"Categorical columns: {categorical_cols}")
+    logger.info(f"Numeric columns: {numeric_cols}")
+
+    # Preprocessing pipeline
     preprocessor = ColumnTransformer(
         transformers=[
-            ("num", numeric_transformer, numeric_features),
-            ("cat", categorical_transformer, categorical_features),
-        ],
-        remainder="drop",
+            ("num", Pipeline([
+                ("imputer", SimpleImputer(strategy="median")),
+                ("scaler", StandardScaler())
+            ]), numeric_cols),
+            ("cat", Pipeline([
+                ("imputer", SimpleImputer(strategy="constant", fill_value="missing")),
+                ("encoder", OneHotEncoder(handle_unknown="ignore", sparse_output=False))
+            ]), categorical_cols)
+        ]
     )
-    return preprocessor
 
+    X = df.drop(columns=[target_col])
+    y = df[target_col].astype(int)
 
-def train(args):
-    features_path = Path(args.features)
-    df = load_features(features_path)
+    X_processed = preprocessor.fit_transform(X)
+    logger.info(f"Feature matrix shape after preprocessing: {X_processed.shape}")
 
-    # Expect target column named 'default' (1/0)
-    if "default" not in df.columns:
-        raise KeyError("Training data must contain 'default' target column (0/1)")
+    return X_processed, y, preprocessor
 
-    X = df.drop(columns=["default"])
-    y = df["default"].astype(int)
-
-    # simple feature split
-    numeric_features = X.select_dtypes(include=[np.number]).columns.tolist()
-    categorical_features = [c for c in X.columns if c not in numeric_features]
-
-    preprocessor = build_pipeline(numeric_features, categorical_features)
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-    # Fit preprocessor and transform
-    X_train_prep = preprocessor.fit_transform(X_train)
-    X_test_prep = preprocessor.transform(X_test)
-
-    lgb_train = lgb.Dataset(X_train_prep, label=y_train)
-    lgb_eval = lgb.Dataset(X_test_prep, label=y_test, reference=lgb_train)
-
-    params = {
-        "objective": "binary",
-        "metric": "auc",
-        "verbosity": -1,
-        "boosting_type": "gbdt",
-        "seed": 42,
+# -----------------------------
+# Train multiple models
+# -----------------------------
+def train_models(X_train, y_train):
+    models = {
+        "logistic_regression": LogisticRegression(max_iter=1000),
+        "random_forest": RandomForestClassifier(n_estimators=200, random_state=42),
+        "xgboost": XGBClassifier(use_label_encoder=False, eval_metric="logloss", n_estimators=200, random_state=42),
+        "lightgbm": lgb.LGBMClassifier(n_estimators=200, random_state=42),
+        "gradient_boosting": GradientBoostingClassifier(n_estimators=200, random_state=42)
     }
 
-    gbm = lgb.train(
-        params,
-        lgb_train,
-        num_boost_round=1000,
-        valid_sets=[lgb_train, lgb_eval],
-        early_stopping_rounds=30,
-        verbose_eval=False,
+    trained_models = {}
+    for name, model in models.items():
+        logger.info(f"Training model: {name}")
+        model.fit(X_train, y_train)
+        trained_models[name] = model
+
+    return trained_models
+
+# -----------------------------
+# Evaluate and select best model
+# -----------------------------
+def evaluate_models(models, X_test, y_test):
+    best_model = None
+    best_score = 0
+    results = {}
+    for name, model in models.items():
+        y_pred_prob = model.predict_proba(X_test)[:,1]
+        score = roc_auc_score(y_test, y_pred_prob)
+        results[name] = score
+        logger.info(f"{name} ROC-AUC: {score:.4f}")
+        if score > best_score:
+            best_score = score
+            best_model = model
+    logger.info(f"Best model selected: {best_model.__class__.__name__} with ROC-AUC: {best_score:.4f}")
+    return best_model, results
+
+# -----------------------------
+# SHAP explainability
+# -----------------------------
+def generate_shap_report(model, X_sample, feature_names, output_path):
+    explainer = shap.Explainer(model, X_sample)
+    shap_values = explainer(X_sample)
+    shap_html = shap.plots.force(shap_values, matplotlib=False, show=False)
+    shap.save_html(output_path, shap_values)
+    logger.info(f"SHAP report saved to {output_path}")
+
+# -----------------------------
+# Main
+# -----------------------------
+def main(processed_path: str, artifacts_dir: str):
+    df = load_data(processed_path)
+
+    target_col = "FraudResult"
+    X, y, preprocessor = preprocess_features(df, target_col)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
     )
 
-    preds = gbm.predict(X_test_prep, num_iteration=gbm.best_iteration)
-    auc = roc_auc_score(y_test, preds)
-    acc = accuracy_score(y_test, (preds > 0.5).astype(int))
+    trained_models = train_models(X_train, y_train)
+    best_model, scores = evaluate_models(trained_models, X_test, y_test)
 
-    logger.info("Test AUC: %.4f, Accuracy: %.4f", auc, acc)
+    # Save preprocessor and best model
+    os.makedirs(artifacts_dir, exist_ok=True)
+    model_artifact_path = os.path.join(artifacts_dir, "best_model.pkl")
+    joblib.dump({"model": best_model, "preprocessor": preprocessor}, model_artifact_path)
+    logger.info(f"Saved best model and preprocessor to {model_artifact_path}")
 
-    # MLflow logging
-    mlflow.set_tracking_uri(args.mlflow_uri)
-    mlflow.set_experiment(args.experiment_name)
-    with mlflow.start_run():
-        mlflow.log_params(params)
-        mlflow.log_metric("auc", float(auc))
-        mlflow.log_metric("accuracy", float(acc))
+    # SHAP report
+    shap_output_path = os.path.join("docs/model_cards/shap_report.html")
+    os.makedirs(os.path.dirname(shap_output_path), exist_ok=True)
 
-        artifacts_dir = Path(args.artifacts_dir)
-        artifacts_dir.mkdir(parents=True, exist_ok=True)
+    # Sample 5000 rows if dataset is large
+    sample_size = min(5000, X_train.shape[0])
+    X_sample = X_train[:sample_size]
+    generate_shap_report(best_model, X_sample, feature_names=None, output_path=shap_output_path)
 
-        model_path = artifacts_dir / "model.pkl"
-        pipeline_path = artifacts_dir / "preprocessor.pkl"
-
-        # Save LightGBM model via joblib
-        joblib.dump(gbm, model_path)
-        joblib.dump(preprocessor, pipeline_path)
-
-        mlflow.log_artifact(str(model_path), artifact_path="model")
-        mlflow.log_artifact(str(pipeline_path), artifact_path="model")
-
-    logger.info("Model and preprocessor saved to %s", artifacts_dir)
-
-
+# -----------------------------
+# CLI
+# -----------------------------
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--features", required=True, help="Processed features path (parquet/csv)")
-    parser.add_argument("--artifacts-dir", default="models/hybrid_ensemble/artifacts", help="Where to save artifacts")
-    parser.add_argument("--mlflow-uri", default="file:./mlruns", help="MLflow tracking URI")
-    parser.add_argument("--experiment-name", default="credit-risk", help="MLflow experiment name")
-    args = parser.parse_args()
-    train(args)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--processed", default="data/processed/users.parquet")
+    ap.add_argument("--artifacts", default="models/hybrid_ensemble/artifacts")
+    args = ap.parse_args()
+    main(args.processed, args.artifacts)

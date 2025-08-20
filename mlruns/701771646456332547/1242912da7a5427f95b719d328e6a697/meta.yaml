@@ -1,0 +1,15 @@
+artifact_uri: file:///D:/EsH/KAIM/week12/Next-Generation-Credit-Risk-Engine/mlruns/701771646456332547/1242912da7a5427f95b719d328e6a697/artifacts
+end_time: 1755671676423
+entry_point_name: ''
+experiment_id: '701771646456332547'
+lifecycle_stage: active
+run_id: 1242912da7a5427f95b719d328e6a697
+run_name: log_reg
+run_uuid: 1242912da7a5427f95b719d328e6a697
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1755671676339
+status: 4
+tags: []
+user_id: Estiphanos.H

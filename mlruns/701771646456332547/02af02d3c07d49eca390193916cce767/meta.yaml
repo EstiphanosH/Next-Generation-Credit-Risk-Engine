@@ -1,0 +1,15 @@
+artifact_uri: file:///D:/EsH/KAIM/week12/Next-Generation-Credit-Risk-Engine/mlruns/701771646456332547/02af02d3c07d49eca390193916cce767/artifacts
+end_time: 1755676544514
+entry_point_name: ''
+experiment_id: '701771646456332547'
+lifecycle_stage: active
+run_id: 02af02d3c07d49eca390193916cce767
+run_name: gradient_boosting
+run_uuid: 02af02d3c07d49eca390193916cce767
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1755676523704
+status: 3
+tags: []
+user_id: Estiphanos.H

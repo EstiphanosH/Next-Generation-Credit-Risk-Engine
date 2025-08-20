@@ -1,0 +1,52 @@
+paths:
+  data_raw: "data/raw"
+  data_processed: "data/processed"
+  data_external: "data/external"
+  artifacts_dir: "models/artifacts"
+  compliance_dir: "models/compliance"
+  deployment_dir: "models/deployment"
+  monitoring_dir: "models/deployment/monitoring"
+features:
+  use_gnn: false
+  use_delta_lake: false
+  id_column: null
+  timestamp_column: null
+  amount_column: null
+  merchant_column: null
+  category_column: null
+  region_column: null
+  payment_method_column: null
+  device_os_column: null
+  device_browser_column: null
+  label_default_column: null
+macro:
+  enable: true
+  fred_series:
+    cpi: "CPIAUCSL"
+    unemployment: "UNRATE"
+modeling:
+  target_preference: "default_then_risk_tier"
+  test_size: 0.2
+  random_state: 42
+  n_optuna_trials: 30
+  use_smote_for_binary: true
+  fairness_group_col: "user_region"
+  metrics_thresholds:
+    auc_min: 0.85
+    psi_max: 0.1
+    parity_delta_max: 0.05
+mlflow:
+  enable: true
+  tracking_uri: "mlruns"
+  experiment_name: "credit-risk-xente"
+api:
+  host: "0.0.0.0"
+  port: 8000
+ops:
+  log_to_eth: false
+  eth:
+    web3_provider_uri: null
+    contract_address: null
+    contract_abi_path: null
+    from_address: null
+    private_key_env: "ETH_PRIV_KEY"

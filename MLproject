@@ -1,6 +1,1 @@
-name: credit-risk-model
-conda_env: conda.yaml
-
-entry_points:
-  main:
-    command: "python scripts/train.py"
+name: credit-risk-xente

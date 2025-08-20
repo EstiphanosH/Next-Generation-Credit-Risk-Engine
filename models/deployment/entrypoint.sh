@@ -1,2 +1,1 @@
-#!/bin/bash
-python -m scripts.monitor
+#!/usr/bin/env bash

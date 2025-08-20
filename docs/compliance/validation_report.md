@@ -1,4 +1,1 @@
-# Independent Validation Report
-
-## Backtesting Results
-## Stability Analysis
+# Validation Template

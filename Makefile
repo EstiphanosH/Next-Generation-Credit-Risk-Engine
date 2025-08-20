@@ -1,11 +1,4 @@
-# Build automation
-.PHONY: test lint format
 
+.PHONY: setup etl train api test
 test:
-	pytest -v tests/
-
-lint:
-	flake8 scripts/ tests/ api/
-
-format:
-	black scripts/ tests/ api/
+	pytest -q
